@@ -2,10 +2,7 @@
   'use strict';
 
   var SUBJECTS = ['Biology', 'Geography', 'Chemistry', 'General', 'Math', 'Physics', 'Science'];
-  var REPO = 'jalalamanj1/mynoteassets';
-  var BRANCH = 'main';
   var MAX_MB = 50;
-  var IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -15,7 +12,10 @@
   var uploadForm = $('upload-form');
   var subjectTabs = $('subject-tabs');
   var fileGrid = $('file-grid');
+  var browseStatus = $('browse-status');
+
   var currentSubject = SUBJECTS[0];
+  var currentCategory = '';
 
   function showMsg(el, text, cls) {
     el.textContent = text;
@@ -36,11 +36,9 @@
     });
   }
 
-  function getToken() { return sessionStorage.getItem('token'); }
-
   function isImage(name) {
     var ext = name.split('.').pop().toLowerCase();
-    return IMAGE_EXT.indexOf(ext) !== -1;
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].indexOf(ext) !== -1;
   }
 
   /* ---------------- Auth ---------------- */
@@ -48,7 +46,7 @@
   function showApp(username) {
     loginView.classList.add('hidden');
     appView.classList.remove('hidden');
-    $('user-name').textContent = username || getToken() || 'admin';
+    $('user-name').textContent = username || 'admin';
     buildSelects();
     buildTabs();
     loadSubject(currentSubject);
@@ -74,7 +72,6 @@
         password: $('password').value
       })
     }).then(function (data) {
-      sessionStorage.setItem('token', data.token);
       showApp(data.username);
     }).catch(function (err) {
       showMsg($('login-error'), err.message, 'error');
@@ -84,8 +81,9 @@
   });
 
   $('logout').addEventListener('click', function () {
-    sessionStorage.removeItem('token');
-    showLogin();
+    api('/api/logout').catch(function () { /* ignore */ }).finally(function () {
+      showLogin();
+    });
   });
 
   /* ---------------- Browse ---------------- */
@@ -110,6 +108,7 @@
       if (s === currentSubject) { btn.classList.add('active'); }
       btn.addEventListener('click', function () {
         currentSubject = s;
+        currentCategory = '';
         subjectTabs.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
         btn.classList.add('active');
         loadSubject(s);
@@ -118,48 +117,70 @@
     });
   }
 
-  function loadSubject(subject) {
-    var status = $('browse-status');
-    showMsg(status, 'Loading ' + subject + '…', 'ok');
+  function loadSubject(subject, category) {
+    currentCategory = category || '';
+    showMsg(browseStatus, 'Loading ' + subject + (currentCategory ? '/' + currentCategory : '') + '…', 'ok');
     fileGrid.innerHTML = '';
-    var url = 'https://api.github.com/repos/' + REPO + '/contents/diagrams/' + encodeURIComponent(subject) + '?ref=' + BRANCH;
-    fetch(url).then(function (res) {
-      if (res.status === 404) { return []; }
-      if (!res.ok) { throw new Error('GitHub API error ' + res.status); }
-      return res.json();
-    }).then(function (entries) {
-      renderGrid(entries);
-      showMsg(status, entries.length ? subject + ' — ' + entries.length + ' item(s)' : subject + ' is empty', 'ok');
-    }).catch(function (err) {
-      showMsg(status, err.message, 'error');
-    });
+
+    var params = new URLSearchParams({ subject: subject });
+    if (currentCategory) { params.set('category', currentCategory); }
+
+    api('/api/list?' + params.toString())
+      .then(function (data) {
+        renderGrid(data, subject);
+        var label = subject + (currentCategory ? '/' + currentCategory : '');
+        showMsg(browseStatus, data.files.length + ' item(s) in ' + label, 'ok');
+      })
+      .catch(function (err) {
+        if (err.status === 401) { showLogin(); return; }
+        showMsg(browseStatus, err.message, 'error');
+      });
   }
 
-  function renderGrid(entries) {
+  function renderGrid(data, subject) {
     fileGrid.innerHTML = '';
-    if (!entries.length) {
-      var empty = document.createElement('div');
-      empty.className = 'msg ok';
-      empty.textContent = 'No files in this subject yet.';
-      fileGrid.appendChild(empty);
-      return;
+
+    if (currentCategory) {
+      var back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'back-btn';
+      back.textContent = '← ' + subject;
+      back.addEventListener('click', function () { loadSubject(subject); });
+      fileGrid.appendChild(back);
     }
 
-    var files = entries.filter(function (f) { return f.type === 'file' && f.name !== '.gitkeep'; });
+    data.dirs.forEach(function (d) {
+      var tile = document.createElement('div');
+      tile.className = 'tile dir';
+      tile.setAttribute('title', d.name);
+      var icon = document.createElement('div');
+      icon.className = 'thumb icon';
+      icon.textContent = '📁';
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      var name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = d.name + '/';
+      meta.appendChild(name);
+      tile.appendChild(icon);
+      tile.appendChild(meta);
+      tile.addEventListener('click', function () { loadSubject(subject, d.name); });
+      fileGrid.appendChild(tile);
+    });
 
-    files.forEach(function (f) {
+    data.files.forEach(function (f) {
       var tile = document.createElement('div');
       tile.className = 'tile';
 
       var thumb = document.createElement('div');
       thumb.className = 'thumb';
+      var fileUrl = '/api/file?path=' + encodeURIComponent(f.path);
       if (isImage(f.name)) {
         var img = document.createElement('img');
         img.loading = 'lazy';
         img.alt = f.name;
-        img.onload = function () { img.style.display = ''; };
         img.onerror = function () { thumb.className += ' icon'; thumb.textContent = '🖼'; };
-        img.src = f.download_url;
+        img.src = fileUrl;
         thumb.appendChild(img);
       } else {
         thumb.className += ' icon';
@@ -176,7 +197,7 @@
       meta.appendChild(name);
 
       var link = document.createElement('a');
-      link.href = f.download_url;
+      link.href = fileUrl + '&download=1';
       link.target = '_blank';
       link.rel = 'noopener';
       link.textContent = 'view';
@@ -185,6 +206,13 @@
       tile.appendChild(meta);
       fileGrid.appendChild(tile);
     });
+
+    if (!data.dirs.length && !data.files.length) {
+      var empty = document.createElement('div');
+      empty.className = 'msg ok';
+      empty.textContent = 'No files here yet.';
+      fileGrid.appendChild(empty);
+    }
   }
 
   /* ---------------- Upload ---------------- */
@@ -205,19 +233,15 @@
     showMsg($('upload-status'), 'Uploading ' + file.name + '…', 'ok');
 
     fileToBase64(file).then(function (content) {
-      var body = {
-        subject: $('subject').value,
-        category: $('category').value.trim(),
-        filename: file.name,
-        content: content
-      };
       return api('/api/upload', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + getToken()
-        },
-        body: JSON.stringify(body)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: $('subject').value,
+          category: $('category').value.trim(),
+          filename: file.name,
+          content: content
+        })
       });
     }).then(function (data) {
       showMsg($('upload-status'), 'Saved permanently: ' + data.path, 'ok');
@@ -247,12 +271,9 @@
 
   /* ---------------- Init ---------------- */
 
-  var token = getToken();
-  if (token) {
-    api('/api/check', { headers: { 'Authorization': 'Bearer ' + token } })
-      .then(function (data) { showApp(data.username); })
-      .catch(function () { showLogin(); });
-  } else {
+  api('/api/check').then(function (data) {
+    showApp(data.username);
+  }).catch(function () {
     showLogin();
-  }
+  });
 })();

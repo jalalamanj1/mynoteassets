@@ -1,4 +1,4 @@
-import { verifyToken, getSecret, bearerToken, json } from '../lib/auth.js';
+import { verifyToken, getSecret, getSessionToken, json } from '../lib/auth.js';
 
 const SUBJECTS = ['Biology', 'Geography', 'Chemistry', 'General', 'Math', 'Physics', 'Science'];
 
@@ -13,7 +13,7 @@ function sanitize(name) {
 export async function onRequestPost(context) {
   const { request, env } = context;
 
-  const payload = await verifyToken(bearerToken(request), getSecret(env));
+  const payload = await verifyToken(getSessionToken(request), getSecret(env));
   if (!payload) {
     return json({ error: 'Unauthorized' }, 401);
   }

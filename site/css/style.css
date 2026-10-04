@@ -216,6 +216,21 @@ main {
 
 .tile:hover { border-color: var(--accent); }
 
+.tile.dir { cursor: pointer; }
+.tile.dir:hover { border-color: var(--accent); }
+
+.back-btn {
+  grid-column: 1 / -1;
+  width: auto;
+  justify-self: start;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--accent-2);
+  font-weight: 500;
+}
+
 .tile .thumb {
   aspect-ratio: 4 / 3;
   background: #0b101b center/contain no-repeat;

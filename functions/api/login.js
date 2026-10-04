@@ -1,4 +1,4 @@
-import { signToken, getSecret, json } from '../lib/auth.js';
+import { signToken, getSecret, json, sessionCookie } from '../lib/auth.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -22,5 +22,7 @@ export async function onRequestPost(context) {
     getSecret(env)
   );
 
-  return json({ token, username });
+  const res = json({ ok: true, username });
+  res.headers.append('Set-Cookie', sessionCookie(token, 86400));
+  return res;
 }

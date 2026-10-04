@@ -1,7 +1,7 @@
-import { verifyToken, getSecret, bearerToken, json } from '../lib/auth.js';
+import { verifyToken, getSecret, getSessionToken, json } from '../lib/auth.js';
 
 export async function onRequestGet(context) {
-  const payload = await verifyToken(bearerToken(context.request), getSecret(context.env));
+  const payload = await verifyToken(getSessionToken(context.request), getSecret(context.env));
   if (!payload) {
     return json({ error: 'Unauthorized' }, 401);
   }

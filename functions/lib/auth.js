@@ -76,3 +76,23 @@ export function bearerToken(request) {
   const auth = request.headers.get('Authorization') || '';
   return auth.replace(/^Bearer\s+/i, '').trim();
 }
+
+// Session token comes from an HttpOnly cookie (set at login) or, as a
+// fallback, from an Authorization: Bearer header.
+export function getSessionToken(request) {
+  const cookie = request.headers.get('Cookie') || '';
+  const match = /(?:^|;\s*)session=([^;]+)/.exec(cookie);
+  if (match) return decodeURIComponent(match[1]);
+  return bearerToken(request);
+}
+
+export function sessionCookie(token, maxAgeSeconds) {
+  const age = maxAgeSeconds == null ? 86400 : maxAgeSeconds;
+  if (age <= 0) {
+    return 'session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure';
+  }
+  return (
+    'session=' + encodeURIComponent(token) +
+    '; Path=/; Max-Age=' + age + '; HttpOnly; SameSite=Lax; Secure'
+  );
+}
